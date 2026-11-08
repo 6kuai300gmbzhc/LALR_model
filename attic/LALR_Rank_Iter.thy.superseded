@@ -1,0 +1,396 @@
+theory LALR_Rank_Iter
+  imports LALR_Rank_Auto
+begin
+
+text \<open>
+  Executable reduction ranks.
+
+  @{const auto_reduce_rank} is defined by well-founded recursion, which is
+  the right specification, but it is not executable: the value
+  @{term "auto_reduce_rank t s"} cannot be computed by rewriting or by
+  @{method eval}, because the @{const wfrec} combinator only unfolds under a
+  well-foundedness hypothesis.  Every proof that needs a concrete rank
+  value -- for example an acyclicity witness for a concrete table -- is
+  therefore forced to reason about the graph ``by hand'' instead of
+  evaluating the rank.
+
+  This theory replaces the well-founded recursion by a primitive-recursive
+  iteration of the same step function.  Starting from the constant zero
+  function, one iteration replaces the rank of a state by one plus the
+  maximum rank of its successors.  On a finite acyclic graph this iteration
+  reaches the well-founded rank as a fixpoint, and the fixpoint property is
+  itself the rank certificate: it suffices to exhibit an index at which the
+  iteration does not change, which is a decidable property of the table.
+  Since the iteration is primitive recursive, it can be evaluated on a
+  concrete table, so the generator is usable for concrete acyclicity
+  witnesses.
+
+  The remaining gap is a general bound on the stabilization index: for a
+  finite acyclic table the iteration stabilizes after at most as many steps
+  as there are states, but the present theory only requires the caller to
+  supply the index (it is decidable, so a concrete table computes it).
+\<close>
+
+definition reduce_rank_step ::
+  "lalr_table \<Rightarrow> (state \<Rightarrow> nat) \<Rightarrow> state \<Rightarrow> nat" where
+  "reduce_rank_step t f s =
+     Suc (Max (insert 0 (f ` (reduce_graph t `` {s}))))"
+
+primrec reduce_rank_iter :: "lalr_table \<Rightarrow> nat \<Rightarrow> (state \<Rightarrow> nat)" where
+  "reduce_rank_iter t 0 = (\<lambda>_. 0)"
+| "reduce_rank_iter t (Suc n) = reduce_rank_step t (reduce_rank_iter t n)"
+
+definition auto_reduce_rank_iter :: "lalr_table \<Rightarrow> state \<Rightarrow> nat" where
+  "auto_reduce_rank_iter t = reduce_rank_iter t (card (states t))"
+
+lemma finite_reduce_graph_image:
+  assumes finite_states: "finite (states t)"
+  shows "finite (reduce_graph t `` {s})"
+  using finite_Image[OF finite_reduce_graphI[OF finite_states]] .
+
+lemma reduce_rank_step_mono:
+  assumes finite_states: "finite (states t)"
+    and le: "f \<le> g"
+  shows "reduce_rank_step t f \<le> reduce_rank_step t g"
+proof (rule le_funI)
+  fix s
+  let ?A = "reduce_graph t `` {s}"
+  have finite_f: "finite ?A"
+    using finite_reduce_graph_image[OF finite_states] .
+  have bounded:
+    "Max (insert 0 (f ` ?A)) \<le> Max (insert 0 (g ` ?A))"
+  proof (cases "f ` ?A = {}")
+    case True
+    then have "Max (insert 0 (f ` ?A)) = 0"
+      by simp
+    then show ?thesis
+      by simp
+  next
+    case False
+    have maximum_in: "Max (insert 0 (f ` ?A)) \<in> insert 0 (f ` ?A)"
+      by (rule Max_in) (simp_all add: finite_f)
+    show ?thesis
+    proof (cases "Max (insert 0 (f ` ?A)) = 0")
+      case True
+      then show ?thesis
+        by simp
+    next
+      case False
+      with maximum_in have "Max (insert 0 (f ` ?A)) \<in> f ` ?A"
+        by simp
+      then obtain y where y_in: "y \<in> ?A"
+        and rank_value: "Max (insert 0 (f ` ?A)) = f y"
+        by blast
+      have step: "f y \<le> g y"
+        by (rule le_funD[OF le])
+      have g_in_image: "g y \<in> g ` ?A"
+        by (rule imageI) (rule y_in)
+      have g_member: "g y \<in> insert 0 (g ` ?A)"
+        by (rule insertI2) (rule g_in_image)
+      have finite_g: "finite (insert 0 (g ` ?A))"
+        using finite_f by simp
+      have bound: "g y \<le> Max (insert 0 (g ` ?A))"
+        by (rule Max_ge[OF finite_g g_member])
+      show ?thesis
+        using rank_value step bound by simp
+    qed
+  qed
+  show "reduce_rank_step t f s \<le> reduce_rank_step t g s"
+    using bounded unfolding reduce_rank_step_def by simp
+qed
+
+lemma reduce_rank_iter_mono_Suc:
+  assumes finite_states: "finite (states t)"
+  shows "reduce_rank_iter t n \<le> reduce_rank_iter t (Suc n)"
+proof (induction n)
+  case 0
+  show ?case by (simp add: le_fun_def)
+next
+  case (Suc n)
+  show ?case
+    using reduce_rank_step_mono[OF finite_states Suc.IH] by simp
+qed
+
+lemma reduce_rank_iter_mono:
+  assumes finite_states: "finite (states t)"
+    and le: "n \<le> m"
+  shows "reduce_rank_iter t n \<le> reduce_rank_iter t m"
+  using le
+proof (induction m)
+  case 0
+  then show ?case by (simp add: le_fun_def)
+next
+  case (Suc m)
+  show ?case
+  proof (cases "n \<le> m")
+    case True
+    have "reduce_rank_iter t n \<le> reduce_rank_iter t m"
+      by (rule Suc.IH[OF True])
+    also have "\<dots> \<le> reduce_rank_iter t (Suc m)"
+      by (rule reduce_rank_iter_mono_Suc[OF finite_states])
+    finally show ?thesis .
+  next
+    case False
+    with Suc.prems have "n = Suc m" by simp
+    then show ?thesis by (simp add: le_fun_def)
+  qed
+qed
+
+lemma reduce_rank_iter_edge_bound:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    and edge: "(s, g) \<in> reduce_graph t"
+  shows "reduce_rank_iter t n g < reduce_rank_iter t n s"
+proof -
+  have finite_set:
+    "finite (insert 0 (reduce_rank_iter t n ` (reduce_graph t `` {s})))"
+    using finite_reduce_graph_image[OF finite_states] by simp
+  have member:
+    "reduce_rank_iter t n g \<in>
+      insert 0 (reduce_rank_iter t n ` (reduce_graph t `` {s}))"
+    using edge by blast
+  have bound:
+    "reduce_rank_iter t n g \<le>
+      Max (insert 0 (reduce_rank_iter t n ` (reduce_graph t `` {s})))"
+    by (rule Max_ge[OF finite_set member])
+  have same: "reduce_rank_iter t (Suc n) s = reduce_rank_iter t n s"
+    by (rule fun_cong[OF stable])
+  have suc_value:
+    "reduce_rank_iter t (Suc n) s =
+      Suc (Max (insert 0 (reduce_rank_iter t n ` (reduce_graph t `` {s}))))"
+    by (simp add: reduce_rank_step_def)
+  show ?thesis
+    using bound suc_value same by (metis le_imp_less_Suc)
+qed
+
+lemma reduce_rank_iter_certificate:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+  shows "reduce_state_rank_certificate t (reduce_rank_iter t n)"
+  unfolding reduce_state_rank_certificate_def
+  using reduce_rank_iter_edge_bound[OF finite_states stable] by blast
+
+lemma reduce_rank_iter_acyclic:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+  shows "acyclic (reduce_graph t)"
+proof (rule acyclicI_order[where f = "reduce_rank_iter t n"])
+  fix s g
+  assume edge: "(s, g) \<in> reduce_graph t"
+  show "reduce_rank_iter t n g < reduce_rank_iter t n s"
+    by (rule reduce_rank_iter_edge_bound[OF finite_states stable edge])
+qed
+
+text \<open>
+  A single stabilization index is enough: once the iteration repeats itself at
+  some index, it repeats itself at every larger index, so a concrete table only
+  has to check the earliest index at which nothing changes.
+\<close>
+
+lemma reduce_rank_iter_stable_above:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    and le: "n \<le> m"
+  shows "reduce_rank_iter t (Suc m) = reduce_rank_iter t m"
+  using le
+proof (induct m)
+  case 0
+  then have "n = 0" by simp
+  then show ?case using stable by simp
+next
+  case (Suc m)
+  show ?case
+  proof (cases "n \<le> m")
+    case True
+    then have ih: "reduce_rank_iter t (Suc m) = reduce_rank_iter t m"
+      by (rule Suc.hyps)
+    then show ?thesis
+      by simp
+  next
+    case False
+    with Suc.prems have n_eq: "n = Suc m" by simp
+    then show ?thesis using stable by (metis (mono_tags))
+  qed
+qed
+
+corollary reduce_rank_iter_stable_card:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    and bound: "n \<le> card (states t)"
+  shows "reduce_rank_iter t (Suc (card (states t))) =
+    reduce_rank_iter t (card (states t))"
+  by (rule reduce_rank_iter_stable_above
+      [OF finite_states stable bound])
+
+text \<open>
+  Stability at one index also identifies every larger iterate with that
+  index, which is what lets a concrete table use a small stabilization index
+  while the definition keeps the canonical index @{term "card (states t)"}.
+\<close>
+
+lemma reduce_rank_iter_eq_of_stable:
+  assumes finite_states: "finite (states t)"
+    and stable: "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    and le: "n \<le> m"
+  shows "reduce_rank_iter t m = reduce_rank_iter t n"
+  using le
+proof (induct m)
+  case 0
+  then have "n = 0" by simp
+  then show ?case by simp
+next
+  case (Suc m)
+  show ?case
+  proof (cases "n \<le> m")
+    case True
+    have ih: "reduce_rank_iter t m = reduce_rank_iter t n"
+      by (rule Suc.hyps[OF True])
+    have step: "reduce_rank_iter t (Suc m) = reduce_rank_iter t m"
+      by (rule reduce_rank_iter_stable_above[OF finite_states stable True])
+    show ?thesis using step ih by simp
+  next
+    case False
+    with Suc.prems have n_eq: "n = Suc m" by simp
+    then show ?thesis by simp
+  qed
+qed
+
+corollary reduce_state_rank_certificate_iter_step:
+  assumes finite_states: "finite (states t)"
+    and step_fixpoint:
+      "reduce_rank_step t (reduce_rank_iter t n) = reduce_rank_iter t n"
+  shows "reduce_state_rank_certificate t (reduce_rank_iter t n)"
+proof (rule reduce_rank_iter_certificate[OF finite_states])
+  have unfold:
+    "reduce_rank_iter t (Suc n) = reduce_rank_step t (reduce_rank_iter t n)"
+    by simp
+  show "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    unfolding unfold by (rule step_fixpoint)
+qed
+
+corollary reduce_rank_iter_acyclic_step:
+  assumes finite_states: "finite (states t)"
+    and step_fixpoint:
+      "reduce_rank_step t (reduce_rank_iter t n) = reduce_rank_iter t n"
+  shows "acyclic (reduce_graph t)"
+proof (rule reduce_rank_iter_acyclic[OF finite_states])
+  have unfold:
+    "reduce_rank_iter t (Suc n) = reduce_rank_step t (reduce_rank_iter t n)"
+    by simp
+  show "reduce_rank_iter t (Suc n) = reduce_rank_iter t n"
+    unfolding unfold by (rule step_fixpoint)
+qed
+
+text \<open>
+  The iterated rank is bounded by the well-founded rank, so the iteration is
+  a faithful approximation: wherever @{term "auto_reduce_rank t"} is defined
+  by a well-founded recursion, the iteration approaches it from below.
+\<close>
+
+lemma reduce_rank_step_fixpoint:
+  assumes wf: "wf (reduce_rank_rel t)"
+  shows "reduce_rank_step t (auto_reduce_rank t) = auto_reduce_rank t"
+proof (rule ext)
+  fix s
+  have unfold_eq:
+    "auto_reduce_rank t s =
+      Suc (Max (insert 0 (auto_reduce_rank t ` (reduce_graph t `` {s}))))"
+    by (rule auto_reduce_rank_eq[OF wf])
+  have step_s:
+    "reduce_rank_step t (auto_reduce_rank t) s =
+      Suc (Max (insert 0 (auto_reduce_rank t ` (reduce_graph t `` {s}))))"
+    by (simp add: reduce_rank_step_def)
+  show "reduce_rank_step t (auto_reduce_rank t) s = auto_reduce_rank t s"
+    using step_s unfold_eq by (metis)
+qed
+
+lemma reduce_rank_iter_le_auto_reduce_rank:
+  assumes finite_states: "finite (states t)"
+    and wf: "wf (reduce_rank_rel t)"
+  shows "reduce_rank_iter t n \<le> auto_reduce_rank t"
+proof (induction n)
+  case 0
+  show ?case by (simp add: le_fun_def)
+next
+  case (Suc n)
+  have mono_step:
+    "reduce_rank_step t (reduce_rank_iter t n) \<le>
+      reduce_rank_step t (auto_reduce_rank t)"
+    by (rule reduce_rank_step_mono[OF finite_states Suc.IH])
+  also have "\<dots> = auto_reduce_rank t"
+    by (rule reduce_rank_step_fixpoint[OF wf])
+  finally show ?case by simp
+qed
+
+corollary auto_reduce_rank_iter_le_auto_reduce_rank:
+  assumes finite_states: "finite (states t)"
+    and wf: "wf (reduce_rank_rel t)"
+  shows "auto_reduce_rank_iter t s \<le> auto_reduce_rank t s"
+proof -
+  have "reduce_rank_iter t (card (states t)) s \<le> auto_reduce_rank t s"
+    by (rule le_funD[OF
+      reduce_rank_iter_le_auto_reduce_rank[OF finite_states wf]])
+  then show ?thesis
+    unfolding auto_reduce_rank_iter_def .
+qed
+
+text \<open>
+  The public interface: instead of acyclicity, the caller supplies a
+  decidable stabilization index of the iteration.  Everything the
+  termination argument needs follows.
+\<close>
+
+theorem reduce_state_rank_certificate_auto_iter:
+  assumes finite_states: "finite (states t)"
+    and stable:
+      "reduce_rank_iter t (Suc (card (states t))) =
+       reduce_rank_iter t (card (states t))"
+  shows "reduce_state_rank_certificate t (auto_reduce_rank_iter t)"
+  using reduce_rank_iter_certificate[OF finite_states stable]
+  unfolding auto_reduce_rank_iter_def .
+
+theorem reduce_rank_certificate_auto_iter:
+  assumes edge_certificate: "reduce_graph_edge_certificate reachable t"
+    and finite_states: "finite (states t)"
+    and stable:
+      "reduce_rank_iter t (Suc (card (states t))) =
+       reduce_rank_iter t (card (states t))"
+  shows "reduce_rank_certificate reachable
+    (reduce_rank_of_state (auto_reduce_rank_iter t)) t"
+proof (rule reduce_graph_rank_certificate)
+  show "reduce_graph_edge_certificate reachable t"
+    by (rule edge_certificate)
+next
+  show "reduce_state_rank_certificate t (auto_reduce_rank_iter t)"
+    by (rule reduce_state_rank_certificate_auto_iter
+        [OF finite_states stable])
+qed
+
+theorem finite_execution_certificate_of_reduce_graph_iter:
+  assumes init_reachable: "reachable (init_config t toks)"
+    and reachable_next:
+      "\<And>cfg cfg'. reachable cfg \<Longrightarrow>
+        one_step t cfg = Next cfg' \<Longrightarrow> reachable cfg'"
+    and invariant_init: "input_invariant toks (init_config t toks)"
+    and invariant_next:
+      "\<And>cfg cfg'. input_invariant toks cfg \<Longrightarrow>
+        one_step t cfg = Next cfg' \<Longrightarrow> input_invariant toks cfg'"
+    and shift_bound:
+      "\<And>cfg cfg'. reachable cfg \<Longrightarrow>
+        shift_step t cfg cfg' \<Longrightarrow>
+        position cfg < length (input_tokens cfg)"
+    and reduce_correct: "reduce_transition_correct t"
+    and reachable_source:
+      "\<And>cfg. reachable cfg \<Longrightarrow> \<exists>toks. reachable_cfg t toks cfg"
+    and finite_states: "finite (states t)"
+    and stable:
+      "reduce_rank_iter t (Suc (card (states t))) =
+       reduce_rank_iter t (card (states t))"
+  shows "finite_execution_certificate t toks reachable
+    (reduce_rank_of_state (auto_reduce_rank_iter t))"
+  by (rule finite_execution_certificate_of_reduce_graph)
+     (auto intro: init_reachable reachable_next invariant_init invariant_next
+        shift_bound reduce_correct reachable_source
+        reduce_state_rank_certificate_auto_iter[OF finite_states stable])
+
+end

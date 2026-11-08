@@ -1,0 +1,127 @@
+Created by PLY version 3.11 (http://www.dabeaz.com/ply)
+
+Grammar
+
+Rule 0     S' -> Eprime
+Rule 1     Eprime -> E
+Rule 2     E -> E PLUS T
+Rule 3     E -> T
+Rule 4     T -> LPAREN E RPAREN
+Rule 5     T -> A
+
+Terminals, with rules where they appear
+
+A                    : 5
+LPAREN               : 4
+PLUS                 : 2
+RPAREN               : 4
+error                : 
+
+Nonterminals, with rules where they appear
+
+E                    : 1 2 4
+Eprime               : 0
+T                    : 2 3
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . Eprime
+    (1) Eprime -> . E
+    (2) E -> . E PLUS T
+    (3) E -> . T
+    (4) T -> . LPAREN E RPAREN
+    (5) T -> . A
+
+    LPAREN          shift and go to state 4
+    A               shift and go to state 5
+
+    Eprime                         shift and go to state 1
+    E                              shift and go to state 2
+    T                              shift and go to state 3
+
+state 1
+
+    (0) S' -> Eprime .
+
+
+
+state 2
+
+    (1) Eprime -> E .
+    (2) E -> E . PLUS T
+
+    $end            reduce using rule 1 (Eprime -> E .)
+    PLUS            shift and go to state 6
+
+
+state 3
+
+    (3) E -> T .
+
+    PLUS            reduce using rule 3 (E -> T .)
+    $end            reduce using rule 3 (E -> T .)
+    RPAREN          reduce using rule 3 (E -> T .)
+
+
+state 4
+
+    (4) T -> LPAREN . E RPAREN
+    (2) E -> . E PLUS T
+    (3) E -> . T
+    (4) T -> . LPAREN E RPAREN
+    (5) T -> . A
+
+    LPAREN          shift and go to state 4
+    A               shift and go to state 5
+
+    E                              shift and go to state 7
+    T                              shift and go to state 3
+
+state 5
+
+    (5) T -> A .
+
+    PLUS            reduce using rule 5 (T -> A .)
+    $end            reduce using rule 5 (T -> A .)
+    RPAREN          reduce using rule 5 (T -> A .)
+
+
+state 6
+
+    (2) E -> E PLUS . T
+    (4) T -> . LPAREN E RPAREN
+    (5) T -> . A
+
+    LPAREN          shift and go to state 4
+    A               shift and go to state 5
+
+    T                              shift and go to state 8
+
+state 7
+
+    (4) T -> LPAREN E . RPAREN
+    (2) E -> E . PLUS T
+
+    RPAREN          shift and go to state 9
+    PLUS            shift and go to state 6
+
+
+state 8
+
+    (2) E -> E PLUS T .
+
+    PLUS            reduce using rule 2 (E -> E PLUS T .)
+    $end            reduce using rule 2 (E -> E PLUS T .)
+    RPAREN          reduce using rule 2 (E -> E PLUS T .)
+
+
+state 9
+
+    (4) T -> LPAREN E RPAREN .
+
+    PLUS            reduce using rule 4 (T -> LPAREN E RPAREN .)
+    $end            reduce using rule 4 (T -> LPAREN E RPAREN .)
+    RPAREN          reduce using rule 4 (T -> LPAREN E RPAREN .)
+

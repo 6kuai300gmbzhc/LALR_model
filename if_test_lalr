@@ -1,0 +1,102 @@
+Created by PLY version 3.11 (minimal extracted model)
+
+Grammar
+
+Rule 0     S' -> Start
+Rule 1     Start -> IfBlock
+Rule 2     IfBlock -> IF ID THEN ElseClause
+Rule 3     ElseClause -> ELSE IfBlock
+Rule 4     ElseClause -> ELSE ID
+
+Terminals, with rules where they appear
+
+ELSE                 : 3 4
+ID                   : 2 4
+IF                   : 2
+THEN                 : 2
+
+Nonterminals, with rules where they appear
+
+ElseClause           : 2 3 4
+IfBlock              : 1 2 3
+Start                : 0 1
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . Start
+    (1) Start -> . IfBlock
+    (2) IfBlock -> . IF ID THEN ElseClause
+
+    IF              shift and go to state 3
+
+    Start                          shift and go to state 1
+    IfBlock                        shift and go to state 2
+
+state 1
+
+    (0) S' -> Start .
+
+
+state 2
+
+    (1) Start -> IfBlock .
+
+    $end            reduce using rule 1 (Start -> IfBlock .)
+
+
+state 3
+
+    (2) IfBlock -> IF . ID THEN ElseClause
+
+    ID              shift and go to state 4
+
+
+state 4
+
+    (2) IfBlock -> IF ID . THEN ElseClause
+
+    THEN            shift and go to state 5
+
+
+state 5
+
+    (2) IfBlock -> IF ID THEN . ElseClause
+    (3) ElseClause -> . ELSE IfBlock
+    (4) ElseClause -> . ELSE ID
+
+    ELSE            shift and go to state 6
+
+    ElseClause                    shift and go to state 9
+
+state 6
+
+    (2) IfBlock -> . IF ID THEN ElseClause
+    (3) ElseClause -> ELSE . IfBlock
+    (4) ElseClause -> ELSE . ID
+
+    IF              shift and go to state 3
+    ID              shift and go to state 8
+
+    IfBlock                        shift and go to state 7
+
+state 7
+
+    (3) ElseClause -> ELSE IfBlock .
+
+    $end            reduce using rule 3 (ElseClause -> ELSE IfBlock .)
+
+
+state 8
+
+    (4) ElseClause -> ELSE ID .
+
+    $end            reduce using rule 4 (ElseClause -> ELSE ID .)
+
+
+state 9
+
+    (2) IfBlock -> IF ID THEN ElseClause .
+
+    $end            reduce using rule 2 (IfBlock -> IF ID THEN ElseClause .)

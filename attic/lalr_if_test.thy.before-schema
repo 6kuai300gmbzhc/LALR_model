@@ -1,0 +1,636 @@
+theory lalr_if_test
+  imports LALR_Termination LALR_Stack LALR_Rank_Auto LALR_Termination_Schema
+begin
+
+text \<open>
+  A small LALR model extracted from the dangling-else productions.  Its
+  state-only reduce graph contains the cycle 7 \<rightarrow> 9 \<rightarrow> 7.
+\<close>
+
+definition if_p0 :: production where
+  "if_p0 = \<lparr>number = 0, lhs = ''S'', rhs = [Nonterminal ''Start'']\<rparr>"
+
+definition if_p1 :: production where
+  "if_p1 = \<lparr>number = 1, lhs = ''Start'', rhs = [Nonterminal ''IfBlock'']\<rparr>"
+
+definition if_p2 :: production where
+  "if_p2 = \<lparr>number = 2, lhs = ''IfBlock'',
+    rhs = [Terminal ''IF'', Terminal ''ID'', Terminal ''THEN'',
+      Nonterminal ''ElseClause'']\<rparr>"
+
+definition if_p3 :: production where
+  "if_p3 = \<lparr>number = 3, lhs = ''ElseClause'',
+    rhs = [Terminal ''ELSE'', Nonterminal ''IfBlock'']\<rparr>"
+
+definition if_p4 :: production where
+  "if_p4 = \<lparr>number = 4, lhs = ''ElseClause'',
+    rhs = [Terminal ''ELSE'', Terminal ''ID'']\<rparr>"
+
+definition if_cfg :: "symbol cfg" where
+  "if_cfg = CFG [
+    (''Start'', [Nonterminal ''IfBlock'']),
+    (''IfBlock'', [Terminal ''IF'', Terminal ''ID'', Terminal ''THEN'',
+      Nonterminal ''ElseClause'']),
+    (''ElseClause'', [Terminal ''ELSE'', Nonterminal ''IfBlock'']),
+    (''ElseClause'', [Terminal ''ELSE'', Terminal ''ID''])] ''Start''"
+
+definition if_productions :: "production_id \<Rightarrow> production option" where
+  "if_productions n =
+    map_of [(0, if_p0), (1, if_p1), (2, if_p2), (3, if_p3), (4, if_p4)] n"
+
+definition if_actions :: "state \<Rightarrow> token \<Rightarrow> action option" where
+  "if_actions s tok = map_of [
+    ((0, ''IF''), ActShift 3),
+    ((1, ''END''), ActAccept),
+    ((2, ''END''), ActReduce 1),
+    ((3, ''ID''), ActShift 4),
+    ((4, ''THEN''), ActShift 5),
+    ((5, ''ELSE''), ActShift 6),
+    ((6, ''IF''), ActShift 3),
+    ((6, ''ID''), ActShift 8),
+    ((7, ''END''), ActReduce 3),
+    ((8, ''END''), ActReduce 4),
+    ((9, ''END''), ActReduce 2)] (s, tok)"
+
+definition if_gotos :: "state \<Rightarrow> nonterminal_ \<Rightarrow> state option" where
+  "if_gotos s nt = map_of [
+    ((0, ''Start''), 1),
+    ((0, ''IfBlock''), 2),
+    ((5, ''ElseClause''), 9),
+    ((6, ''IfBlock''), 7)] (s, nt)"
+
+definition if_table :: lalr_table where
+  "if_table =
+    \<lparr>parsing_method = ''LALR'',
+      terminals = {''IF'', ''ID'', ''THEN'', ''ELSE'', end_token},
+      nonterminals = {''S'', ''Start'', ''IfBlock'', ''ElseClause''},
+      states = {0..9},
+      productions = if_productions,
+      actions = if_actions,
+      gotos = if_gotos,
+      start_state = 0\<rparr>"
+
+definition if_reduce_edges :: "(state \<times> state) set" where
+  "if_reduce_edges =
+    {(2, 1), (7, 9), (8, 9), (9, 2), (9, 7)}"
+
+definition if_reduce_edge_list :: "(state \<times> state) list" where
+  "if_reduce_edge_list = [(2, 1), (7, 9), (8, 9), (9, 2), (9, 7)]"
+
+definition if_auto_reduce_rank :: "state \<Rightarrow> nat" where
+  "if_auto_reduce_rank = auto_reduce_rank if_reduce_edge_list"
+
+text \<open>Facts about the five productions of the table.\<close>
+
+lemma if_rule_1 [simp]:
+  "lhs if_p1 = ''Start''" "length (rhs if_p1) = 1"
+  by (simp_all add: if_p1_def)
+
+lemma if_rule_2 [simp]:
+  "lhs if_p2 = ''IfBlock''" "length (rhs if_p2) = 4"
+  by (simp_all add: if_p2_def)
+
+lemma if_rule_3 [simp]:
+  "lhs if_p3 = ''ElseClause''" "length (rhs if_p3) = 2"
+  by (simp_all add: if_p3_def)
+
+lemma if_rule_4 [simp]:
+  "lhs if_p4 = ''ElseClause''" "length (rhs if_p4) = 2"
+  by (simp_all add: if_p4_def)
+
+lemma if_productions_1 [simp]: "productions if_table 1 = Some if_p1"
+  by (simp add: if_table_def if_productions_def)
+
+lemma if_productions_2 [simp]: "productions if_table 2 = Some if_p2"
+  by (simp add: if_table_def if_productions_def)
+
+lemma if_productions_3 [simp]: "productions if_table 3 = Some if_p3"
+  by (simp add: if_table_def if_productions_def)
+
+lemma if_productions_4 [simp]: "productions if_table 4 = Some if_p4"
+  by (simp add: if_table_def if_productions_def)
+
+lemma if_reduce_actions:
+  "actions if_table s tok = Some (ActReduce rid) \<Longrightarrow>
+   (s = 2 \<and> rid = 1) \<or> (s = 7 \<and> rid = 3) \<or>
+   (s = 8 \<and> rid = 4) \<or> (s = 9 \<and> rid = 2)"
+  unfolding if_table_def if_actions_def
+  by (auto split: if_splits prod.splits)
+
+lemma if_goto_start:
+  "gotos if_table s' ''Start'' = Some g \<Longrightarrow> g = 1"
+  unfolding if_table_def if_gotos_def
+  by (auto split: if_splits prod.splits)
+
+lemma if_goto_ifblock:
+  "gotos if_table s' ''IfBlock'' = Some g \<Longrightarrow> g = 2 \<or> g = 7"
+  unfolding if_table_def if_gotos_def
+  by (auto split: if_splits prod.splits)
+
+lemma if_goto_else:
+  "gotos if_table s' ''ElseClause'' = Some g \<Longrightarrow> g = 9"
+  unfolding if_table_def if_gotos_def
+  by (auto split: if_splits prod.splits)
+
+lemma if_no_shift_end:
+  "actions if_table s end_token = Some (ActShift st) \<Longrightarrow> False"
+  unfolding if_table_def if_actions_def
+  by (auto split: if_splits prod.splits)
+
+
+text \<open>
+  Coverage of the reduce graph: the four reduce actions of the table map to
+  exactly the five edges of @{text if_reduce_edges}.  The proof classifies the
+  action of a reduce step, and then reads off the goto entry of the reduced
+  production; it never enumerates the parse tables with @{text auto}.
+\<close>
+
+lemma if_reduce_graph_pair:
+  "(s, g) \<in> reduce_graph if_table \<Longrightarrow> (s, g) \<in> if_reduce_edges"
+proof -
+  assume mem: "(s, g) \<in> reduce_graph if_table"
+  from mem obtain tok rid p s' where
+    dec: "s \<in> states if_table \<and>
+      actions if_table s tok = Some (ActReduce rid) \<and>
+      productions if_table rid = Some p \<and>
+      s' \<in> states if_table \<and>
+      gotos if_table s' (lhs p) = Some g \<and>
+      g \<in> states if_table"
+    unfolding reduce_graph_def by blast
+  from dec have act: "actions if_table s tok = Some (ActReduce rid)"
+    and prod: "productions if_table rid = Some p"
+    and goto: "gotos if_table s' (lhs p) = Some g"
+    by blast+
+  from if_reduce_actions[OF act]
+  consider (r_one) "s = 2" "rid = 1"
+    | (r_two) "s = 7" "rid = 3"
+    | (r_three) "s = 8" "rid = 4"
+    | (r_four) "s = 9" "rid = 2"
+    by blast
+  then show "(s, g) \<in> if_reduce_edges"
+  proof cases
+    case r_one
+    have s_eq: "s = 2" using r_one by simp
+    have rid_eq: "rid = 1" using r_one by simp
+    have p_eq: "p = if_p1" using prod rid_eq if_productions_1
+      by (metis option.inject)
+    have goto': "gotos if_table s' ''Start'' = Some g"
+      using goto p_eq by simp
+    have g_eq: "g = 1" by (rule if_goto_start[OF goto'])
+    show ?thesis using s_eq g_eq by (simp add: if_reduce_edges_def)
+  next
+    case r_two
+    have s_eq: "s = 7" using r_two by simp
+    have rid_eq: "rid = 3" using r_two by simp
+    have p_eq: "p = if_p3" using prod rid_eq if_productions_3
+      by (metis option.inject)
+    have goto': "gotos if_table s' ''ElseClause'' = Some g"
+      using goto p_eq by simp
+    have g_eq: "g = 9" by (rule if_goto_else[OF goto'])
+    show ?thesis using s_eq g_eq by (simp add: if_reduce_edges_def)
+  next
+    case r_three
+    have s_eq: "s = 8" using r_three by simp
+    have rid_eq: "rid = 4" using r_three by simp
+    have p_eq: "p = if_p4" using prod rid_eq if_productions_4
+      by (metis option.inject)
+    have goto': "gotos if_table s' ''ElseClause'' = Some g"
+      using goto p_eq by simp
+    have g_eq: "g = 9" by (rule if_goto_else[OF goto'])
+    show ?thesis using s_eq g_eq by (simp add: if_reduce_edges_def)
+  next
+    case r_four
+    have s_eq: "s = 9" using r_four by simp
+    have rid_eq: "rid = 2" using r_four by simp
+    have p_eq: "p = if_p2" using prod rid_eq if_productions_2
+      by (metis option.inject)
+    have goto': "gotos if_table s' ''IfBlock'' = Some g"
+      using goto p_eq by simp
+    have g_cases: "g = 2 \<or> g = 7" by (rule if_goto_ifblock[OF goto'])
+    from g_cases show ?thesis
+    proof
+      assume "g = 2"
+      with s_eq show ?thesis by (simp add: if_reduce_edges_def)
+    next
+      assume "g = 7"
+      with s_eq show ?thesis by (simp add: if_reduce_edges_def)
+    qed
+  qed
+qed
+
+lemma if_reduce_graph_subset:
+  "reduce_graph if_table \<subseteq> if_reduce_edges"
+proof (rule subsetI)
+  fix x
+  assume x: "x \<in> reduce_graph if_table"
+  have pair: "(fst x, snd x) \<in> reduce_graph if_table" using x by simp
+  have "(fst x, snd x) \<in> if_reduce_edges"
+    by (rule if_reduce_graph_pair[OF pair])
+  then show "x \<in> if_reduce_edges" by simp
+qed
+
+lemma if_edges_set_eq:
+  "set if_reduce_edge_list = if_reduce_edges"
+  by (simp add: if_reduce_edge_list_def if_reduce_edges_def)
+lemma if_generated_rank_check_fails:
+  "\<not> reduce_rank_check if_reduce_edge_list
+    (auto_reduce_rank if_reduce_edge_list)"
+  by eval
+
+text \<open>
+  The cycle of the reduce graph is witnessed by the reduction of
+  @{text if_p3} at state 7 (which returns to state 9) and the reduction of
+  @{text if_p2} at state 9 (which returns to state 7).
+\<close>
+
+lemma if_reduce_cycle_edges:
+  "(7, 9) \<in> reduce_graph if_table"
+  "(9, 7) \<in> reduce_graph if_table"
+proof -
+  have st_7: "7 \<in> states if_table" by (simp add: if_table_def)
+  have st_9: "9 \<in> states if_table" by (simp add: if_table_def)
+  have st_5: "5 \<in> states if_table" by (simp add: if_table_def)
+  have st_6: "6 \<in> states if_table" by (simp add: if_table_def)
+  have act_7: "actions if_table 7 end_token = Some (ActReduce 3)"
+    by (simp add: if_table_def if_actions_def)
+  have act_9: "actions if_table 9 end_token = Some (ActReduce 2)"
+    by (simp add: if_table_def if_actions_def)
+  have goto_5: "gotos if_table 5 (lhs if_p3) = Some 9"
+    by (simp add: if_table_def if_gotos_def if_p3_def)
+  have goto_6: "gotos if_table 6 (lhs if_p2) = Some 7"
+    by (simp add: if_table_def if_gotos_def if_p2_def)
+  have ex_7_9: "\<exists>tok rid p s'.
+      actions if_table 7 tok = Some (ActReduce rid) \<and>
+      productions if_table rid = Some p \<and>
+      s' \<in> states if_table \<and>
+      gotos if_table s' (lhs p) = Some 9"
+    by (metis act_7 goto_5 if_productions_3 st_5)
+  have ex_9_7: "\<exists>tok rid p s'.
+      actions if_table 9 tok = Some (ActReduce rid) \<and>
+      productions if_table rid = Some p \<and>
+      s' \<in> states if_table \<and>
+      gotos if_table s' (lhs p) = Some 7"
+    by (metis act_9 goto_6 if_productions_2 st_6)
+  from st_7 ex_7_9 st_9 show "(7, 9) \<in> reduce_graph if_table"
+    unfolding reduce_graph_def by simp
+  from st_9 ex_9_7 st_7 show "(9, 7) \<in> reduce_graph if_table"
+    unfolding reduce_graph_def by simp
+qed
+
+lemma if_reduce_graph_not_acyclic:
+  "\<not> acyclic (reduce_graph if_table)"
+proof
+  assume "acyclic (reduce_graph if_table)"
+  then have "\<forall>s. (s, s) \<notin> (reduce_graph if_table)\<^sup>+"
+    unfolding acyclic_def .
+  moreover have "(7, 7) \<in> (reduce_graph if_table)\<^sup>+"
+    using if_reduce_cycle_edges by (meson trancl.intros)
+  ultimately show False by blast
+qed
+lemma if_no_state_reduce_rank:
+  "\<not> (\<exists>rank :: state \<Rightarrow> nat.
+      reduce_state_rank_certificate if_table rank)"
+proof
+  assume "\<exists>rank :: state \<Rightarrow> nat.
+      reduce_state_rank_certificate if_table rank"
+  then obtain rank :: "state \<Rightarrow> nat" where
+      rank_certificate: "reduce_state_rank_certificate if_table rank"
+    by blast
+  have rank_7_9: "rank 9 < rank 7"
+    using reduce_graph_rank_decreases[OF rank_certificate]
+      if_reduce_cycle_edges(1) by blast
+  have rank_9_7: "rank 7 < rank 9"
+    using reduce_graph_rank_decreases[OF rank_certificate]
+      if_reduce_cycle_edges(2) by blast
+  from rank_7_9 rank_9_7 show False by simp
+qed
+definition if_step_rank :: "config \<Rightarrow> nat" where
+  "if_step_rank cfg = 2 * length (state_stack cfg) +
+     (if top_state (state_stack cfg) = Some 2 then 1 else 0)"
+
+lemma if_step_rank_bound:
+  "if_step_rank cfg \<le> 2 * length (state_stack cfg) + 1"
+  unfolding if_step_rank_def
+  by (cases "top_state (state_stack cfg) = Some 2") auto
+
+lemma if_step_rank_lower:
+  "2 * length (state_stack cfg) \<le> if_step_rank cfg"
+  unfolding if_step_rank_def
+  by (cases "top_state (state_stack cfg) = Some 2") auto
+lemma if_generated_rank_2: "if_auto_reduce_rank 2 = 2"
+  by eval
+
+lemma if_generated_rank_7: "if_auto_reduce_rank 7 = 6"
+  by eval
+
+lemma if_generated_rank_8: "if_auto_reduce_rank 8 = 6"
+  by eval
+
+lemma if_generated_rank_9: "if_auto_reduce_rank 9 = 6"
+  by eval
+
+text \<open>
+  The automatically generated state-only rank is \emph{not} applicable to
+  this table: the reduce graph is cyclic, so by @{text if_no_state_reduce_rank}
+  no state rank exists at all, and the generator degenerates to the constant
+  one, which fails the check.  Termination nevertheless holds, because every
+  reduction either shortens the stack or is the single height-preserving
+  reduction at state 2, which continues at state 1.  The leading component of
+  the measure below is therefore the stack height.
+\<close>
+lemma pop_rhs_n_less:
+  "pop_rhs n stk = Some stk' \<Longrightarrow> n < length stk"
+  unfolding pop_rhs_def by (auto split: if_splits)
+
+lemma pop_rhs_length_eq:
+  "pop_rhs n stk = Some stk' \<Longrightarrow> length stk' = length stk - n"
+  unfolding pop_rhs_def by (auto split: if_splits)
+
+lemma pop_rhs_length_add:
+  "pop_rhs n stk = Some stk' \<Longrightarrow> length stk' + n = length stk"
+proof -
+  assume pop: "pop_rhs n stk = Some stk'"
+  have n_lt: "n < length stk" by (rule pop_rhs_n_less[OF pop])
+  have eq: "length stk' = length stk - n"
+    by (rule pop_rhs_length_eq[OF pop])
+  from eq n_lt show ?thesis by arith
+qed
+
+lemma reduce_step_position:
+  assumes "reduce_step t cfg cfg'"
+  shows "position cfg' = position cfg"
+  using assms unfolding reduce_step_def
+  by (auto simp: one_step_def append_trace_def split: option.splits action.splits)
+lemma if_reduce_step_stack:
+  assumes step: "reduce_step if_table cfg cfg'"
+  shows "\<exists>s rid p stk' s' g. top_state (state_stack cfg) = Some s \<and>
+      actions if_table s (input_tokens cfg ! position cfg) = Some (ActReduce rid) \<and>
+      productions if_table rid = Some p \<and>
+      pop_rhs (length (rhs p)) (state_stack cfg) = Some stk' \<and>
+      top_state stk' = Some s' \<and>
+      gotos if_table s' (lhs p) = Some g \<and>
+      state_stack cfg' = stk' @ [g]"
+proof -
+  from reduce_step_obtain[OF step] obtain s rid where
+    pos: "position cfg < length (input_tokens cfg)"
+    and top: "top_state (state_stack cfg) = Some s"
+    and act: "actions if_table s (input_tokens cfg ! position cfg) = Some (ActReduce rid)"
+    and nxt: "one_step if_table cfg = Next cfg'"
+    by blast
+  have dec: "\<exists>p stk' s' g. productions if_table rid = Some p \<and>
+      pop_rhs (length (rhs p)) (state_stack cfg) = Some stk' \<and>
+      top_state stk' = Some s' \<and>
+      gotos if_table s' (lhs p) = Some g \<and>
+      state_stack cfg' = stk' @ [g]"
+    using pos top act nxt
+    unfolding one_step_def Let_def
+    by (auto simp: append_trace_def split: option.splits action.splits if_splits)
+  then obtain p stk' s' g where
+    prod: "productions if_table rid = Some p"
+    and pop: "pop_rhs (length (rhs p)) (state_stack cfg) = Some stk'"
+    and tops': "top_state stk' = Some s'"
+    and goto: "gotos if_table s' (lhs p) = Some g"
+    and stack: "state_stack cfg' = stk' @ [g]"
+    by blast
+  show ?thesis
+    by (rule_tac x=s in exI, rule_tac x=rid in exI, rule_tac x=p in exI,
+        rule_tac x=stk' in exI, rule_tac x=s' in exI, rule_tac x=g in exI,
+        intro conjI, rule top, rule act, rule prod, rule pop, rule tops', rule goto, rule stack)
+qed
+
+lemma if_reduce_step_cases:
+  assumes step: "reduce_step if_table cfg cfg'"
+  shows "length (state_stack cfg') < length (state_stack cfg) \<or>
+         (top_state (state_stack cfg) = Some 2 \<and>
+          top_state (state_stack cfg') = Some 1 \<and>
+          length (state_stack cfg') = length (state_stack cfg))"
+proof -
+  from if_reduce_step_stack[OF step] obtain s rid p stk' s' g where
+    top: "top_state (state_stack cfg) = Some s"
+    and act: "actions if_table s (input_tokens cfg ! position cfg) = Some (ActReduce rid)"
+    and prod: "productions if_table rid = Some p"
+    and pop: "pop_rhs (length (rhs p)) (state_stack cfg) = Some stk'"
+    and tops': "top_state stk' = Some s'"
+    and goto: "gotos if_table s' (lhs p) = Some g"
+    and stack: "state_stack cfg' = stk' @ [g]"
+    by blast
+  from if_reduce_actions[OF act]
+  consider (r_one) "s = 2" "rid = 1"
+    | (r_two) "s = 7" "rid = 3"
+    | (r_three) "s = 8" "rid = 4"
+    | (r_four) "s = 9" "rid = 2"
+    by blast
+  then show ?thesis
+  proof cases
+    case r_one
+    have top2: "top_state (state_stack cfg) = Some 2" using top r_one by simp
+    have rid_eq: "rid = 1" using r_one by simp
+    have p_eq: "p = if_p1" using prod rid_eq if_productions_1
+      by (metis option.inject)
+    have pop1: "pop_rhs (length (rhs if_p1)) (state_stack cfg) = Some stk'"
+      using pop p_eq by simp
+    have n_rhs: "length (rhs if_p1) = 1" by simp
+    have len_add: "length stk' + length (rhs if_p1) = length (state_stack cfg)"
+      by (rule pop_rhs_length_add[OF pop1])
+    have len_stack: "length (state_stack cfg') = length stk' + 1"
+      using stack by simp
+    have len_eq: "length (state_stack cfg') = length (state_stack cfg)"
+      using len_stack len_add n_rhs by arith
+    have goto': "gotos if_table s' ''Start'' = Some g"
+      using goto p_eq by simp
+    have g_eq: "g = 1" by (rule if_goto_start[OF goto'])
+    have top_new: "top_state (state_stack cfg') = Some 1"
+      using stack g_eq unfolding top_state_def by simp
+    show ?thesis
+      by (rule disjI2, intro conjI, rule top2, rule top_new, rule len_eq)
+  next
+    case r_two
+    have rid_eq: "rid = 3" using r_two by simp
+    have p_eq: "p = if_p3" using prod rid_eq if_productions_3
+      by (metis option.inject)
+    have pop3: "pop_rhs (length (rhs if_p3)) (state_stack cfg) = Some stk'"
+      using pop p_eq by simp
+    have n_rhs: "length (rhs if_p3) = 2" by simp
+    have len_add: "length stk' + length (rhs if_p3) = length (state_stack cfg)"
+      by (rule pop_rhs_length_add[OF pop3])
+    have len_stack: "length (state_stack cfg') = length stk' + 1"
+      using stack by simp
+    have len_drop: "length (state_stack cfg') < length (state_stack cfg)"
+      using len_stack len_add n_rhs by arith
+    from len_drop show ?thesis by (rule disjI1)
+  next
+    case r_three
+    have rid_eq: "rid = 4" using r_three by simp
+    have p_eq: "p = if_p4" using prod rid_eq if_productions_4
+      by (metis option.inject)
+    have pop4: "pop_rhs (length (rhs if_p4)) (state_stack cfg) = Some stk'"
+      using pop p_eq by simp
+    have n_rhs: "length (rhs if_p4) = 2" by simp
+    have len_add: "length stk' + length (rhs if_p4) = length (state_stack cfg)"
+      by (rule pop_rhs_length_add[OF pop4])
+    have len_stack: "length (state_stack cfg') = length stk' + 1"
+      using stack by simp
+    have len_drop: "length (state_stack cfg') < length (state_stack cfg)"
+      using len_stack len_add n_rhs by arith
+    from len_drop show ?thesis by (rule disjI1)
+  next
+    case r_four
+    have rid_eq: "rid = 2" using r_four by simp
+    have p_eq: "p = if_p2" using prod rid_eq if_productions_2
+      by (metis option.inject)
+    have pop2: "pop_rhs (length (rhs if_p2)) (state_stack cfg) = Some stk'"
+      using pop p_eq by simp
+    have n_rhs: "length (rhs if_p2) = 4" by simp
+    have len_add: "length stk' + length (rhs if_p2) = length (state_stack cfg)"
+      by (rule pop_rhs_length_add[OF pop2])
+    have len_stack: "length (state_stack cfg') = length stk' + 1"
+      using stack by simp
+    have len_drop: "length (state_stack cfg') < length (state_stack cfg)"
+      using len_stack len_add n_rhs by arith
+    from len_drop show ?thesis by (rule disjI1)
+  qed
+qed
+
+lemma if_step_rank_decreases:
+  assumes step: "reduce_step if_table cfg cfg'"
+  shows "if_step_rank cfg' < if_step_rank cfg"
+proof -
+  from if_reduce_step_cases[OF step] show ?thesis
+  proof
+    assume drop: "length (state_stack cfg') < length (state_stack cfg)"
+    have upper: "if_step_rank cfg' \<le> 2 * length (state_stack cfg') + 1"
+      by (rule if_step_rank_bound)
+    have middle: "2 * length (state_stack cfg') + 1 < 2 * length (state_stack cfg)"
+      using drop by arith
+    have lower: "2 * length (state_stack cfg) \<le> if_step_rank cfg"
+      by (rule if_step_rank_lower)
+    from upper middle lower show ?thesis by arith
+  next
+    assume same: "top_state (state_stack cfg) = Some 2 \<and>
+      top_state (state_stack cfg') = Some 1 \<and>
+      length (state_stack cfg') = length (state_stack cfg)"
+    from same have top: "top_state (state_stack cfg) = Some 2"
+      and top': "top_state (state_stack cfg') = Some 1"
+      and len_eq: "length (state_stack cfg') = length (state_stack cfg)"
+      by blast+
+    have start: "if_step_rank cfg' = 2 * length (state_stack cfg')"
+      unfolding if_step_rank_def using top' by simp
+    have equal: "2 * length (state_stack cfg') = 2 * length (state_stack cfg)"
+      using len_eq by simp
+    have last: "2 * length (state_stack cfg) < if_step_rank cfg"
+      unfolding if_step_rank_def using top by arith
+    from start equal last show ?thesis by arith
+  qed
+qed
+lemma if_input_invariant_step:
+  assumes inv: "input_invariant toks cfg"
+    and nxt: "one_step if_table cfg = Next cfg'"
+  shows "input_invariant toks cfg'"
+proof (cases "position cfg < length toks")
+  case True
+  have frame: "input_tokens cfg' = input_tokens cfg \<and>
+      (position cfg' = position cfg \<or> position cfg' = Suc (position cfg))"
+    by (rule one_step_next_input_frame[OF nxt])
+  from frame have frame_tok: "input_tokens cfg' = input_tokens cfg"
+    and frame_pos: "position cfg' = position cfg \<or> position cfg' = Suc (position cfg)"
+    by blast+
+  from inv have tok: "input_tokens cfg = toks @ [end_token]"
+    and pos: "position cfg \<le> length toks"
+    unfolding input_invariant_def by blast+
+  show ?thesis
+    unfolding input_invariant_def
+  proof
+    show "input_tokens cfg' = toks @ [end_token]" using frame_tok tok by simp
+  next
+    show "position cfg' \<le> length toks" using frame_pos pos True by auto
+  qed
+next
+  case False
+  with inv have eq: "position cfg = length toks"
+    unfolding input_invariant_def by simp
+  have tok: "input_tokens cfg = toks @ [end_token]"
+    using inv unfolding input_invariant_def by blast
+  have frame_tok: "input_tokens cfg' = input_tokens cfg"
+    using one_step_next_input_frame[OF nxt] by blast
+  have no_shift: "\<not> shift_step if_table cfg cfg'"
+  proof
+    assume shift: "shift_step if_table cfg cfg'"
+    have la: "input_tokens cfg ! position cfg = end_token"
+    proof -
+      have same: "input_tokens cfg ! position cfg = (toks @ [end_token]) ! length toks"
+        using tok eq by simp
+      have last: "(toks @ [end_token]) ! length toks = end_token"
+        by (rule nth_append_length)
+      from same last show ?thesis by simp
+    qed
+    from shift obtain s st where
+      act: "actions if_table s (input_tokens cfg ! position cfg) = Some (ActShift st)"
+      unfolding shift_step_def by blast
+    have "actions if_table s end_token = Some (ActShift st)" using act la by simp
+    then show False by (rule if_no_shift_end)
+  qed
+  have red: "reduce_step if_table cfg cfg'"
+    using next_is_shift_or_reduce[OF nxt] no_shift by blast
+  have pos': "position cfg' = position cfg" by (rule reduce_step_position[OF red])
+  show ?thesis
+    unfolding input_invariant_def
+  proof
+    show "input_tokens cfg' = toks @ [end_token]" using frame_tok tok by simp
+  next
+    show "position cfg' \<le> length toks" using pos' eq by simp
+  qed
+qed
+
+lemma if_execution_certificate:
+  "finite_execution_certificate if_table toks
+     (reachable_cfg if_table toks) if_step_rank"
+proof (unfold finite_execution_certificate_def, intro conjI allI impI)
+  show "reachable_cfg if_table toks (init_config if_table toks)"
+    by (rule reachable_cfg_init)
+next
+  fix cfg cfg'
+  assume reach: "reachable_cfg if_table toks cfg"
+    and nxt: "one_step if_table cfg = Next cfg'"
+  from reach nxt show "reachable_cfg if_table toks cfg'"
+    by (rule reachable_cfg_next)
+next
+  show "input_invariant toks (init_config if_table toks)"
+    by (rule input_invariant_init)
+next
+  fix cfg cfg'
+  assume inv: "input_invariant toks cfg"
+    and nxt: "one_step if_table cfg = Next cfg'"
+  from inv nxt show "input_invariant toks cfg'"
+    by (rule if_input_invariant_step)
+next
+  fix cfg cfg'
+  assume reach: "reachable_cfg if_table toks cfg"
+    and shift: "shift_step if_table cfg cfg'"
+  from shift show "position cfg < length (input_tokens cfg)"
+    unfolding shift_step_def by blast
+next
+  fix cfg cfg'
+  assume reach: "reachable_cfg if_table toks cfg"
+    and red: "reduce_step if_table cfg cfg'"
+  from red show "if_step_rank cfg' < if_step_rank cfg"
+    by (rule if_step_rank_decreases)
+qed
+
+lemma if_termination_certificate:
+  "termination_certificate if_table toks"
+  using if_execution_certificate
+  unfolding termination_certificate_def by blast
+text \<open>
+  The recognizer therefore terminates on every input, although no state rank
+  exists for the table.
+\<close>
+
+theorem if_lalr_termination:
+  "finite_execution_target if_table toks"
+  unfolding finite_execution_target_def
+  by (rule finite_execution_certificateD[OF if_execution_certificate])
+
+corollary if_lalr_terminates:
+  "\<exists>n r. run_rel if_table (init_config if_table toks) r n"
+  using if_lalr_termination unfolding finite_execution_target_def .
+end

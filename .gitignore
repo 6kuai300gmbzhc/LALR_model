@@ -1,0 +1,11 @@
+# Isabelle build home (contains heaps and logs)
+.home/
+heaps/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+
+# editor/backup
+*~
