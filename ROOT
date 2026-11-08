@@ -18,3 +18,4 @@ session LALR_Model = HOL +
     LALR_Test
     lalr_if_test
     complex_lalr_test
+    LALR_Items_Test
