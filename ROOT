@@ -13,6 +13,7 @@ session LALR_Model = HOL +
     LALR_Termination
     LALR_Rank_Auto
     LALR_Termination_Schema
+    LALR_Symbol_Stack
     LALR_Test
     lalr_if_test
     complex_lalr_test
