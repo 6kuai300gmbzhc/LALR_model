@@ -168,3 +168,25 @@ lookahead 与表生成证书目前刻画了正确性所需的接口：Reduce 只
 工程上，`LALR_Item_Stack.thy` 的 `quick_and_dirty` 已收窄为仅包围仍未完成的 `reachable_stack_item_consistent`（`sorry`），其余理论（包括 `LALR_Termination.thy` 与 `LALR_Test.thy`）都在普通模式下接受检查。整个会话用 `isabelle build -D .` 构建通过（`LALR_Rank_Iter.thy` 已移入 `attic/`，不再参与构建；统一的终止性格式在 `LALR_Termination_Schema.thy`）。
 
 `lalr_if_test.thy` 另外用配置度量（`height_rank 2 if_height`）完成了 if 嵌套表的终止性证明（`if_lalr_termination`、`if_lalr_terminates`），尽管该表不存在状态秩（`if_no_state_reduce_rank`）。可见“自动秩”与“终止性”是两件事：前者依赖归约图无环，后者只需要一个合适的测度；`lalr_if_test` 与 `LALR_Test` 分别覆盖了这两条路线（schema 的路线 B 与路线 A）。整会话（含 schema 与 `lalr_if_test`）由 `isabelle build -D .` 通过。
+
+## 语言等价性：M1（可靠性）已完成
+
+终止性路线收尾后，代码库另开一条“表与文法语言一致”的路线（方案见 `plan_equivalence.md`）。第一阶段 M1 只做**可靠性**（识别器只接受文法能生成的字），已全部通过 `isabelle build -D .`。
+
+1. `LALR_Symbol_Stack.thy`（424 行）：符号栈与 yield 关系。
+   - `stack_symbols t toks cfg σ`：从空栈出发，shift 追加 `Terminal (lookahead)`，reduce 把 `rhs` 换成 `[Nonterminal (lhs p)]`（`take (length σ - length (rhs p)) σ @ [Nonterminal (lhs p)]`）。
+   - `parses G σ w`：`σ` 能产出 `w`（terminal / nonterminal / nil 三条规则），并给出 `parses_derives`（`parses ⇒ derives`）、`parses_append`、`parses_append_split` 等组合引理。
+   - `tracks t items σ s` 与 `stack_tracks t items σ stk`：状态 `s` 的项目集里每个项目的点与 `σ` 的尾部一致（整栈版本要求 `length σ + 1 = length stk`，且每个位置 `j` 追踪 `take j σ`）。
+2. `LALR_Soundness.thy`（916 行）：沿运行维护不变量
+   `parser_invariant G t items toks cfg = input_invariant toks cfg ∧ (∃σ. stack_symbols … σ ∧ stack_tracks … σ (state_stack cfg) ∧ parses G σ (map Terminal (consumed_tokens cfg)))`，
+   并对 shift（`state_items_certificate` 的 shift 子句 + `tracks_append_symbol`）与 reduce（`reduce_step_stack_decomposition` + 在栈顶状态上完成的项强制 `σ` 以 `rhs p` 结尾 + `parses_replace_suffix`）分别证明保持。
+3. 主定理 `accepts_sound`：
+   `lalr_sound_certificate G t items bound initial_items lookaheads ⟹ (∀item ∈ initial_items. snd item = 0) ⟹ accept_shape ⟹ ordinary_input t toks ⟹ accepts t toks ⟹ toks ∈ language G`。
+   接受步把 lookahead 定为 `end_token`，由 `ordinary_input` 得输入已读完（`consumed_tokens cfg = toks`）；`lalr_accept_action_correct` 给出增广起始产生式的完成项，追踪把符号栈压成 `[Nonterminal (SS G)]`，于是 `parses_derives` 给出推导。
+4. 两条**显式**义务（不来自项目证书，故保留为假设）：
+   - `lalr_sound_certificate` 的最后一合取：每条 reduce 动作都对应真实文法产生式（用于 `parses_replace_suffix`）；
+   - `accept_shape`：接受时 `length (state_stack cfg) = 2`（即方案中的 C6“起始状态无入边”）。
+   两者都应在表生成端（M2 起的实例化）证明，而不是在可靠性定理里假设掉。
+5. 工程：仓库在 `LALR_Model/` 内独立初始化（父目录 `.git` 不可写），提交 `7e3eb92`（基线）、`52f9dc4`（Symbol_Stack）、`054a050`（Soundness）。`ROOT` 已按依赖顺序插入 `LALR_Symbol_Stack`、`LALR_Soundness`。
+
+**尚未做的**：完备性（`accepts_complete`，需 lookahead 语义、无冲突与动作全定义三条新证书，见 `plan_equivalence.md` 的 C2–C4）、以及把 `lalr_sound_certificate` 与 `accept_shape` 在 `LALR_Test`/`lalr_if_test`/`complex_lalr_test` 上实例化（M2）。
