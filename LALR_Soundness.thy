@@ -340,7 +340,7 @@ definition lalr_sound_certificate ::
      action_entries_wf t \<and>
      state_items_certificate t items bound initial_items \<and>
      lalr_reduce_action_correct t items lookaheads \<and>
-     lalr_accept_action_correct G t items lookaheads \<and>
+     lalr_accept_action_correct G t items \<and>
      (\<forall>s tok rid p. actions t s tok = Some (ActReduce rid) \<longrightarrow>
         productions t rid = Some p \<longrightarrow> (lhs p, rhs p) \<in> set (\<RR> G))"
 
@@ -365,7 +365,7 @@ lemma lalr_sound_certificate_reduce:
 
 lemma lalr_sound_certificate_accept:
   "lalr_sound_certificate G t items bound initial_items lookaheads \<Longrightarrow>
-   lalr_accept_action_correct G t items lookaheads"
+   lalr_accept_action_correct G t items"
   by (simp add: lalr_sound_certificate_def)
 
 lemma lalr_sound_certificate_real:
@@ -389,7 +389,7 @@ lemma lalr_reduce_action_correctD:
   using rc mem act unfolding lalr_reduce_action_correct_def by blast
 
 lemma lalr_accept_action_correctD:
-  assumes ac: "lalr_accept_action_correct G t items lookaheads"
+  assumes ac: "lalr_accept_action_correct G t items"
     and mem: "s \<in> states t"
     and act: "actions t s end_token = Some ActAccept"
   shows "\<exists>rid p. productions t rid = Some p \<and>
@@ -774,7 +774,7 @@ proof -
     using c by (rule lalr_sound_certificate_actions)
   have wf: "wf_table t"
     using c by (rule lalr_sound_certificate_wf)
-  have acc_correct: "lalr_accept_action_correct G t items lookaheads"
+  have acc_correct: "lalr_accept_action_correct G t items"
     using c by (rule lalr_sound_certificate_accept)
   from acc have run_ex: "\<exists>n tr. run_rel t (init_config t toks) (Accepted tr) n"
     unfolding accepts_def by blast

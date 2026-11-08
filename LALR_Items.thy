@@ -163,9 +163,8 @@ definition lalr_reduce_action_correct ::
             (rid, length (rhs p))))"
 
 definition lalr_accept_action_correct ::
-  "symbol cfg \<Rightarrow> lalr_table \<Rightarrow> state_item_map \<Rightarrow>
-   state_lookahead_map \<Rightarrow> bool" where
-  "lalr_accept_action_correct G t items lookaheads \<longleftrightarrow>
+  "symbol cfg \<Rightarrow> lalr_table \<Rightarrow> state_item_map \<Rightarrow> bool" where
+  "lalr_accept_action_correct G t items \<longleftrightarrow>
      (\<forall>s.
         s \<in> states t \<longrightarrow>
         actions t s end_token = Some ActAccept \<longrightarrow>
@@ -173,9 +172,7 @@ definition lalr_accept_action_correct ::
           productions t rid = Some p \<and>
           rhs p = [Nonterminal (\<SS> G)] \<and>
           item_complete t (rid, length (rhs p)) \<and>
-          (rid, length (rhs p)) \<in> state_items items s \<and>
-          end_token \<in> state_item_lookaheads lookaheads s
-            (rid, length (rhs p))))"
+          (rid, length (rhs p)) \<in> state_items items s))"
 
 definition lalr_table_generation_certificate ::
   "symbol cfg \<Rightarrow> lalr_table \<Rightarrow> state_item_map \<Rightarrow>
@@ -186,7 +183,7 @@ definition lalr_table_generation_certificate ::
      lalr_lookahead_certificate t items lookaheads \<and>
      lalr_shift_action_correct t items \<and>
      lalr_reduce_action_correct t items lookaheads \<and>
-     lalr_accept_action_correct G t items lookaheads"
+     lalr_accept_action_correct G t items"
 
 lemma lalr_table_generation_certificateD:
   "lalr_table_generation_certificate G t items lookaheads bound initial_items
@@ -195,7 +192,7 @@ lemma lalr_table_generation_certificateD:
    lalr_lookahead_certificate t items lookaheads \<and>
    lalr_shift_action_correct t items \<and>
    lalr_reduce_action_correct t items lookaheads \<and>
-   lalr_accept_action_correct G t items lookaheads"
+   lalr_accept_action_correct G t items"
   by (simp add: lalr_table_generation_certificate_def)
 
 lemma item_complete_well_formed:
@@ -446,6 +443,105 @@ proof -
     show "(rid, length (rhs p)) \<in> state_items mapping s"
       by (rule member)
   qed
+qed
+
+section \<open>Closure algebra\<close>
+
+text \<open>
+  A handful of algebraic facts about one-step closure, used to justify the
+  per-edge item-set equations of a concrete table without recomputing the
+  closures by hand.
+\<close>
+
+lemma item_closure_step_mono:
+  "A \<subseteq> B \<Longrightarrow> item_closure_step t A \<subseteq> item_closure_step t B"
+  unfolding item_closure_step_def by blast
+
+lemma item_closure_step_self:
+  "A \<subseteq> item_closure_step t A"
+  unfolding item_closure_step_def by blast
+
+lemma item_closure_iter_mono:
+  "A \<subseteq> B \<Longrightarrow> item_closure_iter t n A \<subseteq> item_closure_iter t n B"
+  by (induct n arbitrary: A B) (simp_all add: item_closure_step_mono)
+
+lemma item_closure_iter_inc:
+  "A \<subseteq> item_closure_iter t n A"
+proof (induction n)
+  case 0
+  then show ?case by (simp add: item_closure_iter.simps)
+next
+  case (Suc n)
+  have ih: "A \<subseteq> item_closure_iter t n A" by (rule Suc.IH)
+  have mono: "item_closure_iter t n A \<subseteq>
+                item_closure_iter t n (item_closure_step t A)"
+    by (rule item_closure_iter_mono, rule item_closure_step_self)
+  have half: "A \<subseteq> item_closure_iter t n (item_closure_step t A)"
+    by (rule subset_trans [OF ih mono])
+  then show ?case by (simp add: item_closure_iter.simps)
+qed
+
+lemma item_closure_iter_subset_closed:
+  "A \<subseteq> B \<Longrightarrow> item_closure_step t B \<subseteq> B \<Longrightarrow>
+   item_closure_iter t n A \<subseteq> B"
+proof (induct n arbitrary: A)
+  case 0
+  then show ?case by (auto simp: item_closure_iter.simps)
+next
+  case (Suc n)
+  have step_sub: "item_closure_step t A \<subseteq> B"
+    using Suc(2) Suc(3) by (metis item_closure_step_mono subset_trans)
+  from Suc(1)[OF step_sub Suc(3)] show ?case
+    by (simp add: item_closure_iter.simps)
+qed
+
+lemma item_closure_iter_eq_closed:
+  assumes closed: "item_closure_step t A \<subseteq> A" and positive: "0 < n"
+  shows "item_closure_iter t n A = A"
+proof (rule equalityI)
+  show "item_closure_iter t n A \<subseteq> A"
+    by (rule item_closure_iter_subset_closed [OF subset_refl closed])
+next
+  show "A \<subseteq> item_closure_iter t n A"
+    by (rule item_closure_iter_inc)
+qed
+
+lemma item_closure_subset_closed:
+  assumes sub: "A \<subseteq> B" and closed: "item_closure_step t B \<subseteq> B"
+  shows "item_closure t bound A \<subseteq> B"
+  unfolding item_closure_def
+  by (rule item_closure_iter_subset_closed [OF sub closed])
+
+lemma item_goto_mono:
+  "A \<subseteq> B \<Longrightarrow> item_goto t A symbol0 \<subseteq> item_goto t B symbol0"
+  unfolding item_goto_def by blast
+
+lemma item_canonical_goto_subset_closed:
+  assumes closed: "item_closure_step t B \<subseteq> B"
+    and sub: "item_goto t A symbol0 \<subseteq> B"
+  shows "item_canonical_goto t bound A symbol0 \<subseteq> B"
+  unfolding item_canonical_goto_def item_closure_def
+  by (rule item_closure_iter_subset_closed [OF sub closed])
+
+text \<open>
+  The main tool for a concrete table: to prove
+  @{text "state_items items g = item_canonical_goto t bound (state_items items s) symbol0"}
+  it suffices to know that the target set is closed and that it contains the
+  goto image, plus that it lies in the closure of that image.
+\<close>
+
+lemma item_canonical_goto_eqI:
+  assumes closed: "item_closure_step t B \<subseteq> B"
+    and sub: "item_goto t A symbol0 \<subseteq> B"
+    and sup: "B \<subseteq> item_closure t bound (item_goto t A symbol0)"
+  shows "B = item_canonical_goto t bound A symbol0"
+proof (rule equalityI)
+  show "B \<subseteq> item_canonical_goto t bound A symbol0"
+    unfolding item_canonical_goto_def
+    by (rule sup)
+next
+  show "item_canonical_goto t bound A symbol0 \<subseteq> B"
+    by (rule item_canonical_goto_subset_closed [OF closed sub])
 qed
 
 end

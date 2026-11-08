@@ -1,5 +1,6 @@
 theory LALR_Test
-  imports LALR_Termination LALR_Stack LALR_Rank_Auto LALR_Termination_Schema
+  imports LALR_Termination LALR_Stack LALR_Rank_Auto LALR_Termination_Schema LALR_Symbol_Stack
+    LALR_Generator
 begin
 
 text \<open>
@@ -323,5 +324,460 @@ theorem test_lalr_termination:
 corollary test_lalr_terminates:
   "\<exists>n r. run_rel test_table (init_config test_table toks) r n"
   using test_lalr_termination unfolding finite_execution_target_def .
+
+section \<open>The accepting stack shape\<close>
+
+text \<open>
+  The soundness theorem wants the accepting configuration to have a stack of
+  length two.  This is a property of the table alone, and it is proved here by
+  an induction over reachable configurations: zero only ever occurs at the
+  bottom of the stack, and state \<open>1\<close> only ever occurs directly above
+  it.
+\<close>
+
+definition test_stack_ok :: "config \<Rightarrow> bool" where
+  "test_stack_ok cfg \<longleftrightarrow>
+     (\<exists>rest. state_stack cfg = 0 # rest \<and> 0 \<notin> set rest) \<and>
+     (top_state (state_stack cfg) = Some 1 \<longrightarrow> state_stack cfg = [0, 1])"
+
+lemma test_shift_target:
+  "test_action s tok = Some (ActShift st) \<Longrightarrow>
+   st = 4 \<or> st = 5 \<or> st = 6 \<or> st = 9"
+  unfolding test_action_def
+  by (auto split: if_splits)
+
+lemma test_goto_target:
+  "test_goto s' nt = Some g \<Longrightarrow>
+   g = 1 \<or> g = 2 \<or> g = 3 \<or> g = 7 \<or> g = 8 \<or> g = 9"
+  unfolding test_goto_def
+  by (auto split: if_splits)
+
+lemma test_goto_start_one:
+  "test_goto s' nt = Some 1 \<Longrightarrow> s' = 0 \<and> nt = ''Eprime''"
+  unfolding test_goto_def
+  by (auto split: if_splits)
+
+lemma test_production_cases:
+  assumes prod: "productions test_table rid = Some p"
+  shows "rid = 0 \<or> rid = 1 \<or> rid = 2 \<or> rid = 3 \<or> rid = 4 \<or> rid = 5"
+  using prod unfolding test_table_def test_productions_def
+  by (auto split: if_splits)
+
+lemma test_production_lhs_Eprime:
+  assumes prod: "productions test_table rid = Some p"
+    and lhs_eq: "lhs p = ''Eprime''"
+  shows "rid = 1 \<and> p = p1"
+proof -
+  from test_production_cases[OF prod]
+  consider (r0) "rid = 0" | (r1) "rid = 1" | (r2) "rid = 2"
+         | (r3) "rid = 3" | (r4) "rid = 4" | (r5) "rid = 5" by blast
+  then show ?thesis
+  proof cases
+    case r0
+    have "productions test_table 0 = Some p0"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r0 have "p = p0" by simp
+    with lhs_eq have False by (simp add: p0_def)
+    then show ?thesis by simp
+  next
+    case r1
+    have "productions test_table 1 = Some p1"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r1 show ?thesis by simp
+  next
+    case r2
+    have "productions test_table 2 = Some p2"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r2 have "p = p2" by simp
+    with lhs_eq have False by (simp add: p2_def)
+    then show ?thesis by simp
+  next
+    case r3
+    have "productions test_table 3 = Some p3"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r3 have "p = p3" by simp
+    with lhs_eq have False by (simp add: p3_def)
+    then show ?thesis by simp
+  next
+    case r4
+    have "productions test_table 4 = Some p4"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r4 have "p = p4" by simp
+    with lhs_eq have False by (simp add: p4_def)
+    then show ?thesis by simp
+  next
+    case r5
+    have "productions test_table 5 = Some p5"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r5 have "p = p5" by simp
+    with lhs_eq have False by (simp add: p5_def)
+    then show ?thesis by simp
+  qed
+qed
+
+lemma test_rhs_nonempty:
+  assumes prod: "productions test_table rid = Some p"
+  shows "0 < length (rhs p)"
+proof -
+  from test_production_cases[OF prod]
+  consider (r0) "rid = 0" | (r1) "rid = 1" | (r2) "rid = 2"
+         | (r3) "rid = 3" | (r4) "rid = 4" | (r5) "rid = 5" by blast
+  then show ?thesis
+  proof cases
+    case r0
+    have "productions test_table 0 = Some p0"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r0 have "p = p0" by simp
+    then show ?thesis by (simp add: p0_def)
+  next
+    case r1
+    have "productions test_table 1 = Some p1"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r1 have "p = p1" by simp
+    then show ?thesis by (simp add: p1_def)
+  next
+    case r2
+    have "productions test_table 2 = Some p2"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r2 have "p = p2" by simp
+    then show ?thesis by (simp add: p2_def)
+  next
+    case r3
+    have "productions test_table 3 = Some p3"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r3 have "p = p3" by simp
+    then show ?thesis by (simp add: p3_def)
+  next
+    case r4
+    have "productions test_table 4 = Some p4"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r4 have "p = p4" by simp
+    then show ?thesis by (simp add: p4_def)
+  next
+    case r5
+    have "productions test_table 5 = Some p5"
+      unfolding test_table_def test_productions_def by (simp split: if_splits)
+    with prod r5 have "p = p5" by simp
+    then show ?thesis by (simp add: p5_def)
+  qed
+qed
+
+lemma top_state_snoc:
+  "top_state (stk @ [x]) = Some x"
+  unfolding top_state_def
+  by (simp add: last_append)
+
+lemma test_stack_ok_init:
+  "test_stack_ok (init_config test_table toks)"
+  unfolding test_stack_ok_def
+proof (intro conjI)
+  show "\<exists>rest. state_stack (init_config test_table toks) = 0 # rest
+               \<and> 0 \<notin> set rest"
+  proof (rule exI[where x = "[]"], intro conjI)
+    show "state_stack (init_config test_table toks) = 0 # []"
+      unfolding init_config_def test_table_def by simp
+  next
+    show "0 \<notin> set ([] :: state list)" by simp
+  qed
+next
+  show "top_state (state_stack (init_config test_table toks)) = Some 1
+        \<longrightarrow> state_stack (init_config test_table toks) = [0, 1]"
+    unfolding init_config_def test_table_def top_state_def by simp
+qed
+
+lemma test_stack_ok_shift:
+  assumes ok: "test_stack_ok cfg"
+    and sh: "shift_step test_table cfg cfg'"
+  shows "test_stack_ok cfg'"
+proof -
+  from ok have bottom:
+    "\<exists>rest. state_stack cfg = 0 # rest \<and> 0 \<notin> set rest"
+    unfolding test_stack_ok_def by blast
+  obtain rest where stk_eq: "state_stack cfg = 0 # rest"
+    and rest_nz: "0 \<notin> set rest"
+    using bottom by blast
+  from sh obtain s st where top: "top_state (state_stack cfg) = Some s"
+    and act: "actions test_table s (input_tokens cfg ! position cfg)
+                = Some (ActShift st)"
+    and nxt: "one_step test_table cfg = Next cfg'"
+    unfolding shift_step_def by blast
+  have act': "test_action s (input_tokens cfg ! position cfg)
+                = Some (ActShift st)"
+    using act unfolding test_table_def by simp
+  have st_cases: "st = 4 \<or> st = 5 \<or> st = 6 \<or> st = 9"
+    by (rule test_shift_target[OF act'])
+  have st_nz: "st \<noteq> 0" using st_cases by auto
+  have st_ne_one: "st \<noteq> 1" using st_cases by auto
+  have stk'_eq: "state_stack cfg' = state_stack cfg @ [st]"
+    by (rule one_step_shift_stack[OF nxt top act])
+  have stk'_eq': "state_stack cfg' = 0 # (rest @ [st])"
+    using stk'_eq stk_eq by simp
+  show ?thesis
+    unfolding test_stack_ok_def
+  proof (intro conjI)
+    show "\<exists>rest. state_stack cfg' = 0 # rest \<and> 0 \<notin> set rest"
+    proof (rule exI[where x = "rest @ [st]"], intro conjI)
+      show "state_stack cfg' = 0 # (rest @ [st])" by (rule stk'_eq')
+    next
+      show "0 \<notin> set (rest @ [st])" using rest_nz st_nz by simp
+    qed
+  next
+    show "top_state (state_stack cfg') = Some 1
+          \<longrightarrow> state_stack cfg' = [0, 1]"
+    proof
+      assume top1: "top_state (state_stack cfg') = Some 1"
+      have "top_state (state_stack cfg') = Some st"
+        using stk'_eq by (simp add: top_state_snoc)
+      with top1 have "st = 1" by simp
+      with st_ne_one show "state_stack cfg' = [0, 1]" by simp
+    qed
+  qed
+qed
+
+lemma test_stack_ok_reduce:
+  assumes ok: "test_stack_ok cfg"
+    and red: "reduce_step test_table cfg cfg'"
+  shows "test_stack_ok cfg'"
+proof -
+  from ok have bottom:
+    "\<exists>rest. state_stack cfg = 0 # rest \<and> 0 \<notin> set rest"
+    unfolding test_stack_ok_def by blast
+  obtain rest where stk_eq: "state_stack cfg = 0 # rest"
+    and rest_nz: "0 \<notin> set rest"
+    using bottom by blast
+  from reduce_step_stack_decomposition[OF red]
+  obtain s rid p stk' s' g where
+    top: "top_state (state_stack cfg) = Some s"
+    and act: "actions test_table s (input_tokens cfg ! position cfg)
+                = Some (ActReduce rid)"
+    and prod: "productions test_table rid = Some p"
+    and pop: "pop_rhs (length (rhs p)) (state_stack cfg) = Some stk'"
+    and top': "top_state stk' = Some s'"
+    and goto: "gotos test_table s' (lhs p) = Some g"
+    and stack_eq: "state_stack cfg' = stk' @ [g]"
+    by blast
+  have goto': "test_goto s' (lhs p) = Some g"
+    using goto unfolding test_table_def by simp
+  have g_cases: "g = 1 \<or> g = 2 \<or> g = 3 \<or> g = 7 \<or> g = 8 \<or> g = 9"
+    by (rule test_goto_target[OF goto'])
+  have g_nz: "g \<noteq> 0" using g_cases by auto
+  have rhs_pos: "0 < length (rhs p)" by (rule test_rhs_nonempty[OF prod])
+  have n_lt: "length (rhs p) < length (state_stack cfg)"
+    using pop unfolding pop_rhs_def by (auto split: if_splits)
+  have pop_len: "length stk' = length (state_stack cfg) - length (rhs p)"
+    by (rule pop_rhs_some_length[OF pop])
+  have stk'_take:
+    "stk' = take (length (state_stack cfg) - length (rhs p)) (state_stack cfg)"
+    using pop unfolding pop_rhs_def by (auto split: if_splits)
+  have k_pos: "0 < length (state_stack cfg) - length (rhs p)"
+    using n_lt by simp
+  have k_lt: "length (state_stack cfg) - length (rhs p) < length (state_stack cfg)"
+    using rhs_pos n_lt by arith
+  have k_eq: "length (state_stack cfg) - length (rhs p)
+                = Suc (length (state_stack cfg) - length (rhs p) - 1)"
+    using k_pos by arith
+  have stk'_shape:
+    "stk' = 0 # take (length (state_stack cfg) - length (rhs p) - 1) rest"
+  proof -
+    have "take (length (state_stack cfg) - length (rhs p)) (state_stack cfg)
+            = take (Suc (length (state_stack cfg) - length (rhs p) - 1))
+                (0 # rest)"
+      using stk'_take stk_eq k_eq by simp
+    also have "... = 0 # take (length (state_stack cfg) - length (rhs p) - 1) rest"
+      by simp
+    finally show ?thesis
+      using stk'_take by simp
+  qed
+  have above_zero:
+    "\<And>j. 0 < j \<Longrightarrow> j < length (state_stack cfg)
+          \<Longrightarrow> state_stack cfg ! j \<noteq> 0"
+  proof -
+    fix j
+    assume j_pos: "0 < j" and j_lt: "j < length (state_stack cfg)"
+    have nth: "state_stack cfg ! j = rest ! (j - 1)"
+      using stk_eq j_pos by (simp add: nth_Cons')
+    have idx_lt: "j - 1 < length rest"
+      using stk_eq j_lt j_pos by simp
+    have mem: "rest ! (j - 1) \<in> set rest"
+      by (rule nth_mem[OF idx_lt])
+    have nz: "rest ! (j - 1) \<noteq> 0"
+    proof
+      assume "rest ! (j - 1) = 0"
+      then have "0 \<in> set rest" using mem by simp
+      with rest_nz show False by contradiction
+    qed
+    show "state_stack cfg ! j \<noteq> 0"
+      using nth nz by simp
+  qed
+  show ?thesis
+    unfolding test_stack_ok_def
+  proof (intro conjI)
+    show "\<exists>rest. state_stack cfg' = 0 # rest \<and> 0 \<notin> set rest"
+    proof (rule exI[where x =
+        "take (length (state_stack cfg) - length (rhs p) - 1) rest @ [g]"],
+        intro conjI)
+      show "state_stack cfg' = 0 #
+              (take (length (state_stack cfg) - length (rhs p) - 1) rest @ [g])"
+        using stack_eq stk'_shape by simp
+    next
+      have nz_take: "0 \<notin> set (take (length (state_stack cfg) - length (rhs p) - 1) rest)"
+        using set_take_subset[of _ rest] rest_nz by blast
+      show "0 \<notin> set (take (length (state_stack cfg) - length (rhs p) - 1) rest
+              @ [g])"
+        using nz_take g_nz by auto
+    qed
+  next
+    show "top_state (state_stack cfg') = Some 1
+          \<longrightarrow> state_stack cfg' = [0, 1]"
+    proof
+      assume top1: "top_state (state_stack cfg') = Some 1"
+      have top_g: "top_state (state_stack cfg') = Some g"
+        using stack_eq by (simp add: top_state_snoc)
+      with top1 have g_eq: "g = 1" by simp
+      have goto_one: "test_goto s' (lhs p) = Some 1"
+        using goto g_eq unfolding test_table_def by simp
+      have start: "s' = 0 \<and> lhs p = ''Eprime''"
+        by (rule test_goto_start_one[OF goto_one])
+      have rid_p: "rid = 1 \<and> p = p1"
+        by (rule test_production_lhs_Eprime[OF prod], simp add: start)
+      have p_eq: "p = p1" using rid_p by blast
+      have len_rhs: "length (rhs p) = 1" using p_eq by (simp add: p1_def)
+      have s'_zero: "top_state stk' = Some 0" using top' start by simp
+      have stk'_ne: "stk' \<noteq> []"
+        using s'_zero unfolding top_state_def by (auto split: if_splits)
+      have len_stk': "length stk' = length (state_stack cfg) - 1"
+        using pop_len len_rhs by simp
+      have last_zero: "stk' ! (length stk' - 1) = 0"
+        using s'_zero stk'_ne
+        unfolding top_state_def
+        by (simp add: last_conv_nth)
+      have idx_zero: "length stk' - 1 = 0"
+      proof (rule ccontr)
+        assume ne: "length stk' - 1 \<noteq> 0"
+        have pos: "0 < length stk' - 1"
+          using ne len_stk' k_pos by arith
+        have lt: "length stk' - 1 < length (state_stack cfg)"
+          using len_stk' k_lt by arith
+        have nth_eq: "stk' ! (length stk' - 1)
+                        = state_stack cfg ! (length stk' - 1)"
+        proof -
+          have "length stk' = length (state_stack cfg) - length (rhs p)"
+            by (rule pop_len)
+          then have "length stk' - 1
+                       < length (state_stack cfg) - length (rhs p)"
+            using pos by arith
+          then show ?thesis
+            using stk'_take
+            by (simp add: nth_take)
+        qed
+        with last_zero above_zero[OF pos lt] show False by simp
+      qed
+      have len_pos: "0 < length stk'" using stk'_ne by simp
+      then have len_one: "length stk' = 1" using idx_zero by arith
+      have stk'_one: "stk' = [0]"
+      proof -
+        have "stk' = take 1 (state_stack cfg)"
+          using stk'_take len_stk' len_one by simp
+        also have "... = [0]" using stk_eq by simp
+        finally show ?thesis .
+      qed
+      have "state_stack cfg' = [0, 1]"
+        using stack_eq stk'_one g_eq by simp
+      then show "state_stack cfg' = [0, 1]" .
+    qed
+  qed
+qed
+
+lemma test_stack_ok_step:
+  assumes ok: "test_stack_ok cfg"
+    and nxt: "one_step test_table cfg = Next cfg'"
+  shows "test_stack_ok cfg'"
+proof -
+  have dis: "shift_step test_table cfg cfg' \<or> reduce_step test_table cfg cfg'"
+    by (rule next_is_shift_or_reduce[OF nxt])
+  from dis show ?thesis
+  proof (rule disjE)
+    assume "shift_step test_table cfg cfg'"
+    then show ?thesis by (rule test_stack_ok_shift[OF ok])
+  next
+    assume "reduce_step test_table cfg cfg'"
+    then show ?thesis by (rule test_stack_ok_reduce[OF ok])
+  qed
+qed
+
+fun reach_path :: "lalr_table \<Rightarrow> config \<Rightarrow> config \<Rightarrow> nat \<Rightarrow> bool" where
+  "reach_path t cfg cfg' 0 = (cfg' = cfg)"
+| "reach_path t cfg cfg' (Suc n) = (\<exists>c. reach_path t cfg c n \<and> one_step t c = Next cfg')"
+
+lemma reachable_cfg_path:
+  "reachable_cfg t toks cfg \<Longrightarrow> \<exists>n. reach_path t (init_config t toks) cfg n"
+proof (rule reachable_cfg.induct)
+  fix t toks
+  show "\<exists>n. reach_path t (init_config t toks) (init_config t toks) n"
+    by (rule_tac x = 0 in exI, simp add: reach_path.simps)
+next
+  fix t toks cfg cfg'
+  assume reach: "reachable_cfg t toks cfg"
+    and ih: "\<exists>n. reach_path t (init_config t toks) cfg n"
+    and nxt: "one_step t cfg = Next cfg'"
+  from ih obtain n where path: "reach_path t (init_config t toks) cfg n" by blast
+  show "\<exists>m. reach_path t (init_config t toks) cfg' m"
+  proof (rule_tac x = "Suc n" in exI)
+    show "reach_path t (init_config t toks) cfg' (Suc n)"
+      unfolding reach_path.simps
+      by (rule_tac x = cfg in exI, rule conjI, rule path, rule nxt)
+  qed
+qed
+
+lemma test_stack_ok_path:
+  "reach_path test_table (init_config test_table toks) cfg n \<Longrightarrow> test_stack_ok cfg"
+proof (induction n arbitrary: cfg)
+  case 0
+  then show ?case by (simp add: reach_path.simps test_stack_ok_init)
+next
+  case (Suc n)
+  from Suc.prems obtain c where path:
+      "reach_path test_table (init_config test_table toks) c n"
+    and nxt: "one_step test_table c = Next cfg"
+    by (auto simp add: reach_path.simps)
+  have ok: "test_stack_ok c" using Suc.IH path by blast
+  show ?case by (rule test_stack_ok_step[OF ok nxt])
+qed
+
+lemma test_stack_ok_reachable:
+  "reachable_cfg test_table toks cfg \<Longrightarrow> test_stack_ok cfg"
+  by (drule reachable_cfg_path, erule exE, rule test_stack_ok_path)
+
+lemma test_accept_step:
+  "test_action s tok = Some ActAccept \<Longrightarrow> s = 1"
+  unfolding test_action_def
+  by (auto split: if_splits)
+
+lemma test_accept_shape:
+  assumes reach: "reachable_cfg test_table toks cfg"
+    and acc: "one_step test_table cfg = Done (Accepted tr)"
+  shows "length (state_stack cfg) = 2"
+proof -
+  have ok: "test_stack_ok cfg" by (rule test_stack_ok_reachable[OF reach])
+  have acc_dec: "position cfg < length (input_tokens cfg)
+      \<and> (\<exists>s. top_state (state_stack cfg) = Some s
+             \<and> test_action s (input_tokens cfg ! position cfg)
+                 = Some ActAccept)"
+    using acc unfolding one_step_def Let_def test_table_def
+    by (auto split: option.splits action.splits if_splits)
+  then obtain s where top: "top_state (state_stack cfg) = Some s"
+    and act: "test_action s (input_tokens cfg ! position cfg)
+                = Some ActAccept"
+    by blast
+  have s_one: "s = 1" by (rule test_accept_step[OF act])
+  have shape: "state_stack cfg = [0, 1]"
+    using ok top s_one unfolding test_stack_ok_def by blast
+  show ?thesis using shape by simp
+qed
+
+
+lemma test_accept_shape_ok: "accept_shape_ok test_table toks"
+  unfolding accept_shape_ok_def
+  by (blast intro: test_accept_shape)
 
 end
